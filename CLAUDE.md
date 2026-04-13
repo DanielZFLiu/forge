@@ -1,10 +1,10 @@
 # CLAUDE.md
 
-Reusable engineering principles for AI-assisted development. Drop into your project's root, or merge with an existing `CLAUDE.md` / `GEMINI.md` / `AGENTS.md`.
+## Immutable
 
-## Commit Conventions
+### Commit Conventions
 
-See `commit-conventions.md`. Symbol prefix format:
+See `docs/commit-conventions.md`. Symbol prefix format:
 
 | Symbol | Meaning |
 | ------ | ------- |
@@ -17,32 +17,36 @@ See `commit-conventions.md`. Symbol prefix format:
 
 Rules:
 - Lowercase, no period, short
-- Scope in parens when useful: `+ (auth) session tokens`
-- Bundle related small edits into a medium-sized commit — don't fragment a cohesive change across tiny commits
-- Multi-line messages for multiple distinct changes
+- Scope in parens when useful: `+ (editor) block parser`
+- Do not make small commits (e.g. 10 lines of change for a small fix); instead bundle edits into medium sized changes and then commit them.
+- Multi-line messages for multiple changes. E.g.
+```
++ (editor) undo/redo
+! (editor) editor now editable when empty
+```
 - Verify behavior before committing
 - No co-authored-by line
 
-## Quality
+### Quality
 
-Run the full test suite after every feature or refactor. Passing tests are the minimum bar.
+Run `npm test` after every feature or refactor. Passing tests are the minimum bar.
 
-## Testing
+### Testing
 
 Tests must catch regressions. Ask: "if someone broke this, would this test catch it?" Follow `forge-tests` for coverage and organization.
 
-## Debugging
+### Debugging
 
-Root-cause first. If the first fix fails, re-examine assumptions from scratch.
+Root-cause first. If the first fix fails, re-examine assumptions from scratch. Use the `systematic-debugging` skill.
 
-## Process
+### Process
 
 Follow required review processes and skill workflows — don't skip steps when momentum is high.
 
-## Style
+### Style
 
-Follow `forge-style` for code principles and `code-style.md` for concrete formatting rules. Follow `forge-docs` for documentation.
+Follow `forge-style` for code, `forge-docs` for docs.
 
-## Review
+### Review
 
 After a major change, invoke `forge-review`.

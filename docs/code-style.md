@@ -1,10 +1,12 @@
 # Code Style Guide
 
-Concrete formatting and comment conventions. These complement the principles in `skills/forge-style/SKILL.md` — the skill covers _why_, this file covers _what_. Adapt the tooling references to whatever formatter and language your project uses.
-
 ## Formatting
 
-Run your project's formatter before committing. Pick a consistent indentation style (tabs or spaces, not both) and document it in the project root.
+Prettier handles all formatting. Run `npm run format` before committing.
+
+See `.prettierrc` for the full config.
+
+Also, note, indentations should be tab (four spaces)!
 
 ## File Structure
 
@@ -46,12 +48,12 @@ Use these for grouping related items: interfaces, classes, helper functions, etc
 ### When NOT to Write Comments
 
 - Don't describe what the code does when the code is readable
-- Don't add doc comments (JSDoc / docstrings) to every function — only when the signature doesn't tell the story
+- Don't add JSDoc to every function — only when the signature doesn't tell the full story
 - Don't add `@param` / `@returns` when the types already communicate this
 
 ### Function-Level Comments
 
-Use a brief doc comment when:
+Use a brief JSDoc comment when:
 
 - The function is part of a public API
 - The behavior has non-obvious edge cases

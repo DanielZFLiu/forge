@@ -18,9 +18,11 @@ Each commit message starts with a symbol prefix indicating the type of change:
 - Keep the message short and lowercase (no period at end)
 - Focus on _what_ changed, not _how_
 - Scope with parentheses when useful: `+ (editor) block parser`
-- Double check code behaviour before committing. It's better to commit a fix that actually fixes the issue rather than committing fix 1, fix 2, and fix 3 on the same bug separately.
-- Bundle related small edits into one medium-sized commit. Don't fragment a cohesive change across many tiny commits.
-- Use multi-line messages when a commit legitimately contains multiple distinct changes:
+- Double check code behaviour before commiting. It's better to commit a fix that actually fixes the issue rather than commiting fix 1, fix 2, and fix 3 on the same bug separately.
+
+## Example
+
+The commit msg might be:
 
 ```
 + (editor) undo/redo
