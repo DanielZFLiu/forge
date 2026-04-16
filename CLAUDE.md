@@ -47,6 +47,10 @@ Follow required review processes and skill workflows — don't skip steps when m
 
 Follow `forge-style` for code, `forge-docs` for docs.
 
+### Subagents
+
+Any detached subagent (dispatched via the `Agent` tool) must read `forge-style`, `forge-docs`, and `forge-tests` at the start of its task and enforce them in every file it touches — for example, improving pre-existing verbose comments when they fall in its path. Subagent briefs must name these three skills explicitly.
+
 ### Review
 
 After a major change, invoke `forge-review`.
