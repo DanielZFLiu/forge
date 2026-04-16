@@ -142,6 +142,32 @@ Updated code
 + (api) rate limiting middleware
 ```
 
+## 7. Directory Structure
+
+A directory should reflect a decision, not an accident. The enemy isn't any specific topology — Rails-style layer-slicing, Clean Architecture layering, data-oriented clustering, and kernel-style deep taxonomies all work when chosen on purpose. The enemy is "I didn't know where else to put it."
+
+Four diagnostic questions for any directory:
+
+- **What changes together lives together.** If fixing one thing touches six directories, the axis is wrong. The right axis — features, layers, or data — depends on your team and your domain. Pick one you can defend, and make it legible from the tree alone.
+- **Who depends on whom.** Directories form a DAG. Volatile code depends on stable, not the reverse. A dependency cycle between two directories means the boundary isn't real — merge them or re-draw.
+- **Could a new reader form this tree from first principles?** If the layout doesn't match the mental model a contributor would build after a week of reading the code, the tree is fighting the architecture. Fix the tree.
+- **Name the concept, not the shelf.** Directories named after what they *are* (`parser/`, `auth/`, `users/`) survive refactors. Directories named after what they *do* (`managers/`, `handlers/`, `services/`, `providers/`, `utils/`) don't — architectural roles drift. Anything ending in `-ers` or `-ors` is usually a shelf, not a boundary.
+
+```
+// bad: accidents dressed as decisions
+src/
+  utils/        — dumping ground
+  helpers/      — second dumping ground, overlaps with utils/
+  managers/     — role-named; what do they manage?
+  common/       — third dumping ground
+
+// good: decisions you can defend
+src/
+  auth/         — everything that touches identity
+  billing/      — everything that touches payments
+  parser/       — everything that touches the syntax tree
+```
+
 ## Quick Reference
 
 | Principle | One-line rule |
@@ -153,6 +179,7 @@ Updated code
 | File Structure | Section dividers, public API at top, colocate types |
 | Comments | Explain why, never what |
 | Commits | Symbol prefix, lowercase, one logical change per commit |
+| Directory Structure | A directory should reflect a decision, not an accident |
 
 ## Common Mistakes
 
@@ -160,6 +187,7 @@ Updated code
 | --------------------------------------------------- | ------------------------------------------------------------------ |
 | Matching existing bad style when adding code        | Improve what you touch — rename, restructure, add dividers         |
 | Commenting what code does instead of why            | Delete the comment or improve the code                             |
-| Creating `utils`/`helpers`/`common` dumping grounds | Group by domain: "authentication," "parsing," not "miscellaneous"  |
+| Creating `utils`/`helpers`/`common` dumping grounds | Name the concept that lives there (`auth`, `parser`, `billing`), or move each file next to its real consumer |
 | Over-documenting with JSDoc on every function       | Doc comments only where the signature doesn't tell the story       |
 | Giant orchestrator function that "does one thing"   | If it's 50+ lines of sequential steps, the steps are the functions |
+| Role-named directories (`managers/`, `services/`, `handlers/`, `providers/`) | Name by the noun that lives there. Anything ending in `-ers` or `-ors` is probably a shelf, not a boundary |

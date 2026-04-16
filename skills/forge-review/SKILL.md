@@ -48,6 +48,8 @@ Look for: tests that verify implementation details instead of behavior, missing 
 
 Look for: files too long with genuine responsibility sprawl, missing section dividers, missing file header comments, premature abstractions, inconsistent file naming conventions, messy directory structures.
 
+**REQUIRED for the directory audit:** Load `forge-style` and apply Section 7's four diagnostic questions explicitly — *what changes together lives together*, *who depends on whom*, *could a new reader form this tree from first principles*, *name the concept not the shelf*. Cite the specific diagnostic each finding violates. Do not audit directories from general intuition or paraphrase forge-style rules from memory — read the section and quote it.
+
 **Run this pass last** — decomposition proposals should account for bugs found in earlier passes. Don't flag files that are long but cohesive — length alone isn't a problem.
 
 ### Agent prompt template
