@@ -20,6 +20,7 @@ Tests catch regressions. Every test should answer: "if someone broke this specif
 - **One concern per file.** A test file covers one module, one feature, or one behavior area. Not "everything about headings" (710 lines) — split into "heading conversion", "heading split/merge", "heading navigation".
 - **Target: under 150 lines per file.** If a file exceeds this, it's probably covering multiple concerns. Split it.
 - **Parameterize repetitive cases.** If 6 tests differ only in a single input value (h1 through h6), use a loop or table-driven pattern. Two representative cases beat six copy-pasted ones.
+- **Test location when source moves.** When a module moves, either (a) move the test file to mirror the new source path or (b) keep test directories flat and rename each to match the concept its tests cover. Pick one convention per repo and follow it — don't mix "this test mirrors the source tree, that one is flat" in the same codebase. When a test directory's name stops matching the source it covers, rename it in the same commit that moves the source.
 
 ### Before Writing Tests
 

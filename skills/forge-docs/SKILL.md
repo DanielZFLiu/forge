@@ -61,6 +61,17 @@ Three questions, answered fast:
 
 Link to deeper docs. No essays.
 
+### 6. Roadmap vs. Changelog
+
+Roadmap is forward-looking. Changelog is the record. They are separate documents for a reason — keep them separate.
+
+- When a milestone ships, move its entry out of the roadmap into the changelog **in the same commit that ships the feature**. If you can't hold that discipline, the roadmap rots.
+- Roadmap contains nothing already done.
+- Changelog contains nothing still speculative.
+- Language matching status: roadmap uses "will", "planned"; changelog uses past tense and version numbers.
+
+The failure mode is roadmap entries that describe shipped features as if they're upcoming. Readers trust the wrong document and plan against stale information.
+
 ## What NOT to Document
 
 - Patterns discoverable from framework docs
@@ -80,3 +91,5 @@ Link to deeper docs. No essays.
 | Separate docs for thin layers | One doc covering the full vertical slice |
 | Describing internal pipeline stages by function name | Describe what the pipeline does, not what the functions are called |
 | "It should be noted that..." | Delete. Say the thing. |
+| Shipped milestone still listed in the roadmap | Move to changelog in the same commit that ships the feature. Roadmap is forward-looking only. |
+| Changelog promises features that haven't shipped | The changelog records what happened. Speculative entries belong in the roadmap until they land. |

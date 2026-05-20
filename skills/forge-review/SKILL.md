@@ -25,6 +25,20 @@ Skip what you already know from the current session — don't re-read docs you'v
 
 Run passes sequentially. Within each pass, use parallel `feature-dev:code-reviewer` agents (max 3 at a time). These are better than Explore agents for review — they filter by confidence and report only high-priority issues.
 
+### Scoped Reviews
+
+The four-pass structure exists so nothing is systematically missed in a **full** review. It's not a checklist to walk every time. Match the passes to the ask:
+
+| Ask | Passes to run |
+|---|---|
+| "Is this ready to ship?" / "Full audit" / "Before next phase" | All four |
+| "Check for bugs in module X" | Pass 1, scoped to that module |
+| "Are the docs stale?" / "Design doc review" | Pass 2 only |
+| "Are the tests catching regressions?" | Pass 3 only |
+| "How's the directory structure?" / "Organize before v1" | Pass 4 only |
+
+Going wider than the ask produces findings the user didn't want, buries the findings they did want, and drains the review budget on low-value passes. Reconfirm the scope with the user if the ask is ambiguous — don't guess.
+
 ### Pass 1: Logical Bugs
 
 Look for: race conditions, null/undefined mishandling, incorrect state transitions, missing error handling at boundaries, broken control flow, logic that contradicts design docs, execution path parity gaps (feature works in one code path but is entirely missing in another).
@@ -36,7 +50,9 @@ Look for: race conditions, null/undefined mishandling, incorrect state transitio
 
 ### Pass 2: Design + Documentation
 
-Look for: tier/boundary violations, leaky abstractions, business logic in the wrong layer, contract violations, SDK/library integration patterns that deviate from the library's documented approach, stale design docs, outdated version references, misleading comments. Evaluate doc quality against `forge-docs` criteria.
+Look for: tier/boundary violations, leaky abstractions, business logic in the wrong layer, contract violations, SDK/library integration patterns that deviate from the library's documented approach, stale design docs, outdated version references, misleading comments, comment signal-to-noise sinks (enumerations of types/unions that already live in the code, references to past/future versions, narration of readable code, multi-paragraph docstrings on internal functions — see `forge-style` § Comments antipatterns). Evaluate doc quality against `forge-docs` criteria.
+
+When flagging a design smell, prefer its canonical name (Feature Envy, Data Clump, Shotgun Surgery, Flag Argument, Temporary Field, Status Variable, …) over an ad-hoc label — consistent vocabulary makes findings aggregable across reviewers. Catalog: [luzkan.github.io/smells](https://luzkan.github.io/smells/); some projects keep a curated local reference (e.g. `docs/research/code-smells.md`) — prefer that when present.
 
 ### Pass 3: Testing Quality
 
@@ -92,6 +108,8 @@ Commit the findings doc so nothing is lost. After all fixes are applied, keep th
 - **Tier 4: Major refactors** — file decompositions, architectural changes. Use isolated worktrees for the riskiest ones.
 
 **After each tier:** `build`, `test`, `format`, then commit.
+
+**Dispatch subagents for mechanical fixes.** Once a fix is specified down to exact paths — a stale-doc sweep, an import-path rewrite across 10+ files, a file rename with N importers — the work is mechanical. Hand it to a subagent with the precise list; review the diff; commit. Don't grind through Read+Edit calls yourself when the scope is nailed down. Reserve your own attention for the judgment tiers (bug fixes, structural decisions, decomposition shape).
 
 ## Quick Reference
 

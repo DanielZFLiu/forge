@@ -26,6 +26,7 @@ Don't build for hypotheticals. Abstraction is a cost — pay it only when repeti
 - No abstraction until the third repetition
 - Prefer flat control flow; prefer shallow inheritance/wrapper chains
 - Delete dead code — git remembers
+- Delete migration shims once the migration is done. A re-export facade whose own docstring says "stable import path for legacy callers" has an expiration trigger: when all callers moved, kill the shim. Same for rename aliases (`export { foo as fooLegacy }`) and compatibility wrappers. "Keeps old callers working" justification outlives its usefulness fast — treat it as a deadline, not a promise.
 - If a function needs a paragraph to explain what it does, it's doing too much
 
 ```
@@ -78,6 +79,44 @@ function createUser(user)
 function updateUser(user)
 ```
 
+### Extract pure logic out of framework components
+
+Framework components (React, Svelte, Vue SFCs, etc.) tend to accumulate pure logic alongside render/lifecycle code. When a component contains a large block — action bundles, state machines, computed tree operations — that only reaches into framework state through props/getters, extract it as a `createX(deps): X` factory in a plain file.
+
+Triggers:
+
+- A component has a 200+ line object literal or logic block that doesn't use framework lifecycle (no hooks, no reactive runes, no render calls, no refs to DOM).
+- The logic's only tie to the component is reading props/state and writing back.
+- You want the logic unit-testable without mounting the component.
+
+Pattern:
+
+```
+// Before: 300 lines inline in ListComponent
+const listContext = {
+  indentItem(i) { ...reads node, state, parent action bundles... },
+  insertItemAfter(i, item) { ... },
+  // ...
+}
+
+// After: factory in a plain file
+export function createListContext(deps: ListContextDeps): ListContext { ... }
+
+// Component shrinks to:
+const listContext = createListContext({
+  get node()  { return node; },   // getters read live reactive values
+  get index() { return index; },
+  state,
+  parentActions,
+});
+```
+
+Rules:
+
+- **Pass reactive state via getters**, not plain values. Closures that capture `node` by value snapshot the state at factory-call time; getters re-read each invocation.
+- **Deps is a contract.** Keep it narrow. If the factory needs "basically everything the component has," the logic isn't independent — leave it where it is.
+- **Don't extract what uses framework lifecycle.** `$effect`, `useEffect`, `onMount`, `watch` — those stay in the component.
+
 ## 4. File Structure
 
 A file's organization lets a reader scan its shape and find what they need without reading every line.
@@ -102,24 +141,59 @@ function attachListeners(editor)
 
 ## 5. Comments
 
-Comments explain _why_, never _what_. If the code needs a comment to explain what it does, improve the code first.
+Default to no comments. Explain _why_ — non-obvious reasoning, workarounds, deliberate exclusions — never _what_. Code, types, and names carry the _what_. Commit messages and `git blame` carry _when_ and _who_. Issue trackers carry _what's next_. Design docs carry _how things fit together_. A comment earns its line only by answering something none of those can: _why did the author make this specific local choice that wouldn't be obvious from reading the code?_
 
-- Explain non-obvious reasoning, workarounds, deliberate exclusions
-- Don't narrate readable code — no `// increment counter` above `counter++`
-- Doc comments only for public APIs and non-obvious edge cases — not every function
-- Link to issues/tickets when working around a bug
+**The test:** if removing the comment wouldn't confuse a reader, delete it.
+
+**You own the signal-to-noise on your way out.** When you touch a file, prune comments that fail the test — even ones you didn't write. Matching existing over-commented style perpetuates the rot; don't. Rationalizations that look reasonable but mean "I skipped pruning":
+
+| Excuse | Reality |
+|---|---|
+| "Not my comment, not my job" | You're editing the file. Its signal-to-noise is now yours. |
+| "Someone might find it helpful" | If removal wouldn't confuse a reader, it's not helping. |
+| "It preserves context" | Context belongs in commits/PRs/issues/design docs — not frozen in the code. |
+| "Might be load-bearing" | Only if you *don't understand its purpose*. Redundant-with-the-code goes; puzzling-to-you stays. |
+
+### Antipatterns (delete on sight)
+
+| Antipattern | Why it rots | Fix |
+|---|---|---|
+| Enumerating union members, enum values, or flag lists that live in the code | The moment someone adds a variant the comment lies; readers cross-check the type anyway | Delete; reference the type by name if useful |
+| Referencing past or future versions ("post-0.5.4", "as of 2024", "TODO before v2") | Ephemeral context freezes into the file; once the version ships, the line is pure noise | Delete, or — if actionable — explicit `TODO(owner): reason` / issue tracker entry |
+| Narrating the next line ("// now set the flag", "// loop through users") | Zero information beyond the code itself | Delete |
+| Restating the function or variable name in prose | Duplicates the name, ages on rename | Delete |
+| Mentioning callers or the current task ("used by the X flow", "added for ticket #123") | Belongs in PR description / commit message; rots as callers evolve | Delete; if the caller relationship is a genuine invariant, encode it as a type or assertion |
+| Multi-paragraph docstrings on internal functions | Signal-to-noise sink; the name + signature should carry the load | Collapse to one sentence or delete. Long docstrings belong on public APIs with genuinely non-obvious edges |
+| TODOs buried inside descriptive prose ("...the cast can be tightened post-X.Y") | Invisible to grep, undated, unowned, visually indistinguishable from description | Explicit `TODO(owner): reason — link`, or move to an issue tracker |
+
+### Example
 
 ```
-// bad: narrates the obvious
-// loop through users and check if active
-for user in users
-  if user.isActive ...
+// ❌ bad — enumerates the union, narrates the cast, references a shipped version
+// The public interface uses `string` for op.kind; narrow to the
+// internal OperationKind union here. Callers pass known kinds
+// ('split' | 'merge' | 'delete' | 'updateContent' | 'paste' |
+// 'replaceBlock'); the cast can be tightened post-0.5.4.
+const kind = op.kind as OperationKind;
 
-// good: explains a non-obvious data quirk
-// expired trials still show as "active" in the DB;
-// filter by lastLogin to catch actual usage
-for user in users
-  if user.isActive and user.lastLogin > cutoff ...
+// ✅ good — explains the one non-obvious why, nothing else
+// Public interface widens to string for ergonomics; OperationKind is the internal source of truth.
+const kind = op.kind as OperationKind;
+
+// ✅✅ often better — if the widening rationale isn't load-bearing for this line's reader, delete.
+const kind = op.kind as OperationKind;
+```
+
+```
+// ❌ bad — narrates readable code
+// loop through users and check if active
+for user in users:
+  if user.isActive: ...
+
+// ✅ good — non-obvious data quirk
+// Expired trials still show as "active" in the DB; filter by lastLogin to catch real usage.
+for user in users:
+  if user.isActive and user.lastLogin > cutoff: ...
 ```
 
 ## 6. Commits
@@ -187,7 +261,10 @@ src/
 | --------------------------------------------------- | ------------------------------------------------------------------ |
 | Matching existing bad style when adding code        | Improve what you touch — rename, restructure, add dividers         |
 | Commenting what code does instead of why            | Delete the comment or improve the code                             |
+| Matching existing over-commented style when editing a file | Prune comments that fail the "why, non-obviously" test — you own signal-to-noise on your way out |
 | Creating `utils`/`helpers`/`common` dumping grounds | Name the concept that lives there (`auth`, `parser`, `billing`), or move each file next to its real consumer |
 | Over-documenting with JSDoc on every function       | Doc comments only where the signature doesn't tell the story       |
 | Giant orchestrator function that "does one thing"   | If it's 50+ lines of sequential steps, the steps are the functions |
 | Role-named directories (`managers/`, `services/`, `handlers/`, `providers/`) | Name by the noun that lives there. Anything ending in `-ers` or `-ors` is probably a shelf, not a boundary |
+| Re-export shim kept "for compatibility" long after the migration completed | Delete the shim. Update the remaining callers — the "legacy" is the shim itself. |
+| 200+ line block of pure logic embedded in a framework component | Extract as a `createX(deps): X` factory. Component becomes the wiring shell; factory is unit-testable in isolation. |
