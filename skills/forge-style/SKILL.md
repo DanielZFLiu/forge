@@ -1,279 +1,117 @@
 ---
 name: forge-style
-description: Use when writing, modifying, or reviewing code — especially when adding to files with poor naming, missing structure, or messy patterns that tempt you to match existing style
+description: Use when writing, modifying, or reviewing code, including code comments and commit messages, and especially when the surrounding code is messy enough to tempt you to match it
 ---
 
 # Forge Style
 
-Universal, language-agnostic code style. These principles apply to every codebase regardless of language or framework. **Sibling skills:** `forge-docs` for docs, `forge-tests` for tests, `forge-review` for structured audits.
+How code should read and where its rules should live, in any language. Sibling skills: `forge-tests` for tests, `forge-docs` for docs, `forge-review` for audits. A project's own rules (its CLAUDE.md, a contributing guide) win where they are more specific.
 
-## The Cardinal Rule
+## Improve what you touch
 
-**When you touch messy code, improve what you touch.** Don't conform to bad patterns. If the surrounding code has generic names, mode-parameter functions, or no structure — fix what's in your path. You are not obligated to match existing bad style.
+Code you add in the style of the code around it spreads that style, and the moment you're already editing a file is the cheapest time to fix it. So rename the vague name you had to decode, split the mode-parameter function you're adding a mode to, prune the comments you read on the way. The limit is your path, not the whole file: fix what your change reads or edits, and when the cleanup outgrows the change (a rename with thirty call sites, a file split), land it as its own commit so each diff stays reviewable. Renaming something exported means updating its callers in the same change, or leaving it.
 
-This means: if you're adding `deleteUser` to a file that has `doStuff(action)` and `h(email)`, you rename `doStuff` to `createUser`/`findUser`, rename `h` to `isValidEmail`, and add section dividers — not just append your function to the bottom.
+## Where a rule lives
 
-**Don't rationalize inaction:**
+A rule that several routes must follow (every edit that joins two blocks, every path that places the caret, every caller that needs the same context) belongs in one place all of those routes already pass through. Copied to each route, it drifts: one copy learns a case the others don't, a new route arrives without it, and the bug is always "enforced at N-1 of N paths". When you find one broken copy, list every sibling route before fixing any.
 
-- "The user only asked me to add, not refactor" — improving what you touch IS part of adding. A surgeon doesn't leave old gauze in the patient.
-- "I might break something by renaming" — renaming local/internal functions is safe. For exported/public APIs, check callers first — but still rename if you can update them.
-- "It's not my code to change" — you were given the file to modify. Improve it.
+Contracts climb an enforcement ladder as high as they can:
 
-## 1. Simplicity
+1. **Unrepresentable.** A type or a shared entry point that makes the violation impossible to write. A required parameter beats a convention to pass it.
+2. **Guarded.** A check at that shared entry point that fails a test gate in development. Where the shared route can't be built yet, a test that reads the source and fails when a new route skips the rule catches path N+1 the day it's written.
+3. **Documented.** Prose, only for what neither of the above can hold.
 
-Don't build for hypotheticals. Abstraction is a cost — pay it only when repetition forces your hand.
+A bug fix closes the class, not the instance: find the rule the bug broke, move it up a rung if you can, and add the guard that would have caught it.
 
-- No abstraction until the third repetition
-- Prefer flat control flow; prefer shallow inheritance/wrapper chains
-- Delete dead code — git remembers
-- Delete migration shims once the migration is done. A re-export facade whose own docstring says "stable import path for legacy callers" has an expiration trigger: when all callers moved, kill the shim. Same for rename aliases (`export { foo as fooLegacy }`) and compatibility wrappers. "Keeps old callers working" justification outlives its usefulness fast — treat it as a deadline, not a promise.
-- If a function needs a paragraph to explain what it does, it's doing too much
+## When to abstract
 
-```
-// bad: premature generalization for one use case
-function transformData(data, format, options, callback)
+Abstract when two pieces of code exist for the same reason, not when they have the same shape. The asymmetry decides it: undoing a premature abstraction inside a codebase is a mechanical job (find its call sites, inline it), while unifying copies that have drifted apart is a real one, because each copy picked up its own fixes and you have to work out which differences are bugs.
 
-// good: do the specific thing
-function csvToJson(data)
-```
+- At the second copy, ask whether both copies enforce one rule or keep one promise. If they do, extract now, before a third route copies whichever of the two it finds first.
+- If they merely look alike (two loops over different data for different ends), leave them. A third copy is the tiebreaker when you can't tell.
+- A wrong abstraction announces itself: each new caller adds a flag or a special case. Inline it back and let the callers diverge.
+- The asymmetry flips at a published API. Inlining an export breaks its consumers, so abstractions at a public boundary wait for evidence.
 
-## 2. Naming
+## Simplicity
 
-Names are the first layer of documentation. Describe what something is or does, not how it works.
+- Build for the cases you have, not the ones you can imagine.
+- Prefer flat control flow and shallow wrapper chains.
+- Delete dead code; git remembers it.
+- A migration shim (a re-export for old import paths, a rename alias, a compatibility wrapper) has a deadline: when the last caller moves, delete it. "Keeps old callers working" stops being true long before anyone removes the shim.
 
-- Name by role/purpose, not implementation (`userRecords` not `hashMap`)
-- Booleans read as questions (`isVisible`, `hasChildren`, `canEdit`)
-- Functions describe their action or return value (`fetchUser`, `parseConfig`)
-- Avoid generic names (`data`, `item`, `temp`) unless scope is under ~5 lines
-- Stay consistent — if it's `user` in one place, don't call it `account` elsewhere
+## Naming
 
-```
-// bad
-function process(d)
-  temp = d.val * 1.1
-  return temp
+Names are the first layer of documentation, so name by role (`userRecords`, not `hashMap`) and call one concept by one name everywhere. If it's `user` in one module and `account` in the next, a reader has to find out whether they're the same thing. Generic names (`data`, `item`, `temp`) are fine in a scope of a few lines and nowhere else.
 
-// good
-function applyTax(price)
-  taxedPrice = price * 1.1
-  return taxedPrice
-```
+## Decomposition
 
-## 3. Decomposition
+Each function, file and module has a responsibility you can state in one short sentence. If the sentence needs "and", split it. A function whose behavior switches on a mode or flag argument is two functions sharing a signature; give each its own. A long orchestrator that "does one thing" in fifty sequential steps usually has its steps as the missing functions.
 
-Each unit (function, file, module) has one clear responsibility you can state in a short sentence. If you struggle to name it, it's doing too much.
+Logic that doesn't use a UI framework's lifecycle (no effects, no rendering, no DOM refs) belongs in a plain module the component calls, where it can be tested without mounting anything. Pass it its dependencies explicitly, and pass values that change as reads (a getter, an accessor function), never as a copy captured at construction, which goes stale the moment the source changes. If the module needs everything the component has, it isn't independent yet; leave it.
 
-- If you'd use "and" to describe a function, split it
-- Prefer composable functions over long functions with flags/mode parameters
-- Files group related things — not "all helpers" or "all utils"
-- Don't split too early — three similar inline lines beat a premature helper called once
+## File structure
 
-```
-// bad: two functions taped together
-function handleUser(user, mode)
-  if mode == "create" ...
-  if mode == "update" ...
-
-// good
-function createUser(user)
-function updateUser(user)
-```
-
-### Extract pure logic out of framework components
-
-Framework components (React, Svelte, Vue SFCs, etc.) tend to accumulate pure logic alongside render/lifecycle code. When a component contains a large block — action bundles, state machines, computed tree operations — that only reaches into framework state through props/getters, extract it as a `createX(deps): X` factory in a plain file.
-
-Triggers:
-
-- A component has a 200+ line object literal or logic block that doesn't use framework lifecycle (no hooks, no reactive runes, no render calls, no refs to DOM).
-- The logic's only tie to the component is reading props/state and writing back.
-- You want the logic unit-testable without mounting the component.
-
-Pattern:
-
-```
-// Before: 300 lines inline in ListComponent
-const listContext = {
-  indentItem(i) { ...reads node, state, parent action bundles... },
-  insertItemAfter(i, item) { ... },
-  // ...
-}
-
-// After: factory in a plain file
-export function createListContext(deps: ListContextDeps): ListContext { ... }
-
-// Component shrinks to:
-const listContext = createListContext({
-  get node()  { return node; },   // getters read live reactive values
-  get index() { return index; },
-  state,
-  parentActions,
-});
-```
-
-Rules:
-
-- **Pass reactive state via getters**, not plain values. Closures that capture `node` by value snapshot the state at factory-call time; getters re-read each invocation.
-- **Deps is a contract.** Keep it narrow. If the factory needs "basically everything the component has," the logic isn't independent — leave it where it is.
-- **Don't extract what uses framework lifecycle.** `$effect`, `useEffect`, `onMount`, `watch` — those stay in the component.
-
-## 4. File Structure
-
-A file's organization lets a reader scan its shape and find what they need without reading every line.
-
-- Colocate related items — types near the code that uses them, not in a separate `types` file unless shared
-- Section dividers for logical groupings (adapt comment syntax per language):
-  `// ── Section Name ────────────────────────────`
-- Public API / main exports near the top; internals below
-- File headers only when the filename isn't self-explanatory
+A reader should see a file's shape without reading every line. Public API and main exports near the top, internals below. Types sit next to the code that uses them unless they're shared. Section dividers mark logical groups, in the language's comment syntax:
 
 ```
 // ── Public API ──────────────────────────
-
-function createEditor(config)
-function destroyEditor(editor)
-
-// ── Internal ────────────────────────────
-
-function initBuffer(config)
-function attachListeners(editor)
 ```
 
-## 5. Comments
+## Comments
 
-Default to no comments. Explain _why_ — non-obvious reasoning, workarounds, deliberate exclusions — never _what_. Code, types, and names carry the _what_. Commit messages and `git blame` carry _when_ and _who_. Issue trackers carry _what's next_. Design docs carry _how things fit together_. A comment earns its line only by answering something none of those can: _why did the author make this specific local choice that wouldn't be obvious from reading the code?_
+Default to none. The reader is a competent developer who has never seen this repo, reading once. Two kinds earn their lines:
 
-**The budget:** a comment is 1-2 lines; a file or contract header is at most ~5. A why that needs more moves to a design doc, with a one-line pointer left behind. A header that a design doc names as authoritative keeps its contract statement, compressed to the budget — the contract survives, the essay doesn't.
+- A **header** (top of a file, or above a module's contract) says what the thing is for in one sentence a newcomer can read, then at most the one thing a caller must get right. A file needs one when its name and exports don't already say that.
+- A **body comment** says why this line is the way it is, in one plain sentence: the non-obvious choice, the workaround, the deliberate exclusion.
 
-**The test:** if removing the comment wouldn't confuse a reader, delete it.
+Neither narrates how the code works (the code, types and names carry that), and neither argues for the choice over its alternatives; that argument was for the reviewer, and the code keeps only the conclusion. Git carries when and who, the issue tracker carries what's next, design docs carry how things fit together.
 
-**The triage discriminator for borderline blocks:** does it state a *contract* (what this seam guarantees, what a caller must do) or a *justification* (why this reading beat another, what broke before)? A contract earns its lines even at the header budget; a justification goes even at two lines — the code review, not the code, was its audience.
+**Budget.** A comment is 1-2 lines; a header is at most about 5. A why that needs more moves to a design doc and leaves a one-line pointer.
 
-**You own the signal-to-noise on your way out.** When you touch a file, prune comments that fail the test — even ones you didn't write. Matching existing over-commented style perpetuates the rot; don't. Rationalizations that look reasonable but mean "I skipped pruning":
+**Contract or justification.** For a borderline block, ask which it states. A contract (what this module guarantees, what a caller must do) earns its lines even at the header budget. A justification (why this beat another design, what broke before) goes, even at two lines.
 
-| Excuse | Reality |
+**Words.** A comment names its subject (the parser, the scroll container, the undo stack), never "this" or "the layer". Project-private words get the plain phrase instead, or a gloss of three words or fewer where a symbol's name forces them. A catalog code (`R-12`) isn't a reason; say what holds. Capitals for emphasis mean the sentence is carrying too much.
+
+**The test.** If removing the comment wouldn't confuse a reader, delete it, including comments you didn't write in a file you're editing. Only a comment whose purpose you can't work out is worth leaving alone.
+
+What fails the test, most often:
+
+| Shape | Why it goes |
 |---|---|
-| "Not my comment, not my job" | You're editing the file. Its signal-to-noise is now yours. |
-| "Someone might find it helpful" | If removal wouldn't confuse a reader, it's not helping. |
-| "It preserves context" | Context belongs in commits/PRs/issues/design docs — not frozen in the code. |
-| "Might be load-bearing" | Only if you *don't understand its purpose*. Redundant-with-the-code goes; puzzling-to-you stays. |
-
-### Antipatterns (delete on sight)
-
-| Antipattern | Why it rots | Fix |
-|---|---|---|
-| Enumerating union members, enum values, or flag lists that live in the code | The moment someone adds a variant the comment lies; readers cross-check the type anyway | Delete; reference the type by name if useful |
-| Referencing past or future versions ("post-0.5.4", "as of 2024", "TODO before v2") | Ephemeral context freezes into the file; once the version ships, the line is pure noise | Delete, or — if actionable — explicit `TODO(owner): reason` / issue tracker entry |
-| Narrating the next line ("// now set the flag", "// loop through users") | Zero information beyond the code itself | Delete |
-| Restating the function or variable name in prose | Duplicates the name, ages on rename | Delete |
-| Mentioning callers or the current task ("used by the X flow", "added for ticket #123") | Belongs in PR description / commit message; rots as callers evolve | Delete; if the caller relationship is a genuine invariant, encode it as a type or assertion |
-| Citing a resolved issue as provenance for a standing rule ("...must stay ordered (#95)") | The rule stands on its own; the closed ticket is git-blame territory | Drop the citation, keep the rule. Citations of OPEN issues marking known gaps are anchors — those stay |
-| Past-state narration ("used to", "previously", "no longer", "the old X did Y") | Freezes history into the file; the reader needs the current contract, not the diff | Rewrite as a present-tense statement of what must hold, or delete |
-| Multi-paragraph docstrings on internal functions | Signal-to-noise sink; the name + signature should carry the load | Collapse to one sentence or delete. Long docstrings belong on public APIs with genuinely non-obvious edges |
-| Design-rationale essays in comments or headers (incidents, rejected alternatives, review history) | The narrative buries the code; the context ages and duplicates git log / issues / design docs | Keep one line of why; move the rest to a design doc or delete |
-| TODOs buried inside descriptive prose ("...the cast can be tightened post-X.Y") | Invisible to grep, undated, unowned, visually indistinguishable from description | Explicit `TODO(owner): reason — link`, or move to an issue tracker |
-
-### Example
+| Narrating the next line, or restating the name in prose | Says nothing the code doesn't |
+| Enumerating union members, enum values or flags | Lies the day a variant is added |
+| History: versions ("post-0.5"), past states ("used to"), resolved-issue citations, callers or tickets ("added for #123") | The reader needs the current contract; history lives in git. A citation of an open issue marking a known gap stays. |
+| Rationale essays, multi-paragraph docstrings on internal functions | Over budget; the essay goes to a design doc, the docstring collapses to one sentence |
+| A claim with no subject ("Rows before columns.") | The reader has to reconstruct what it's about |
+| A TODO buried in prose | Invisible to grep; write `TODO(owner): reason` or file an issue |
 
 ```
-// ❌ bad — enumerates the union, narrates the cast, references a shipped version
-// The public interface uses `string` for op.kind; narrow to the
-// internal OperationKind union here. Callers pass known kinds
-// ('split' | 'merge' | 'delete' | 'updateContent' | 'paste' |
-// 'replaceBlock'); the cast can be tightened post-0.5.4.
+// bad: enumerates the union, narrates the cast, cites a version
+// The public interface uses `string` for op.kind; narrow to the internal
+// OperationKind union here. Callers pass known kinds ('split' | 'merge' |
+// 'delete'); the cast can be tightened post-0.5.4.
 const kind = op.kind as OperationKind;
 
-// ✅ good — explains the one non-obvious why, nothing else
-// Public interface widens to string for ergonomics; OperationKind is the internal source of truth.
-const kind = op.kind as OperationKind;
-
-// ✅✅ often better — if the widening rationale isn't load-bearing for this line's reader, delete.
+// fine, if a reader would otherwise wonder
+// The public interface widens kind to string; OperationKind is the internal source of truth.
 const kind = op.kind as OperationKind;
 ```
 
-```
-// ❌ bad — narrates readable code
-// loop through users and check if active
-for user in users:
-  if user.isActive: ...
+## Commits
 
-// ✅ good — non-obvious data quirk
-// Expired trials still show as "active" in the DB; filter by lastLogin to catch real usage.
-for user in users:
-  if user.isActive and user.lastLogin > cutoff: ...
-```
+Each commit is one logical change a reviewer can read on its own, verified before it's made.
 
-## 6. Commits
+- Symbol prefix: `+` new, `-` removal, `~` tweak, `>` larger change, `!` bug fix, `@` docs or config.
+- Lowercase, no trailing period, scope in parentheses when useful: `! (parser) off-by-one in heading detection`.
+- Subject lines only. A body is exceptional: 2-3 short lines the subject can't carry.
+- A commit holding several changes puts one summary on line 1, a blank line, then one symbol-prefixed line per change, never a subject plus paragraphs.
+- No `Co-Authored-By` line and no "Generated with" attribution.
 
-Each commit is a self-contained, reviewable unit. The message says what changed in as few words as possible.
+## Directory structure
 
-- Symbol prefix: `+` new, `-` removal, `~` tweak, `>` larger change, `!` bugfix, `@` docs/config
-- Lowercase, no period, short
-- Subject lines only; no essay bodies. A body is exceptional: at most 2-3 short lines the subject genuinely cannot carry
-- Scope in parentheses when useful: `+ (auth) session tokens`
-- One commit per logical change — not per file, not per hour
-- A commit carrying several changes lists one subject line per change, each with its own symbol — never one subject plus paragraphs describing the rest
-- Verify behavior before committing
+A directory should reflect a decision, not "I didn't know where else to put it". Any topology works when chosen on purpose (by feature, by layer, by data). Four questions test one:
 
-```
-// bad
-fixed stuff
-Updated code
-
-// good
-! (parser) off-by-one in heading detection
-+ (api) rate limiting middleware
-```
-
-## 7. Directory Structure
-
-A directory should reflect a decision, not an accident. The enemy isn't any specific topology — Rails-style layer-slicing, Clean Architecture layering, data-oriented clustering, and kernel-style deep taxonomies all work when chosen on purpose. The enemy is "I didn't know where else to put it."
-
-Four diagnostic questions for any directory:
-
-- **What changes together lives together.** If fixing one thing touches six directories, the axis is wrong. The right axis — features, layers, or data — depends on your team and your domain. Pick one you can defend, and make it legible from the tree alone.
-- **Who depends on whom.** Directories form a DAG. Volatile code depends on stable, not the reverse. A dependency cycle between two directories means the boundary isn't real — merge them or re-draw.
-- **Could a new reader form this tree from first principles?** If the layout doesn't match the mental model a contributor would build after a week of reading the code, the tree is fighting the architecture. Fix the tree.
-- **Name the concept, not the shelf.** Directories named after what they *are* (`parser/`, `auth/`, `users/`) survive refactors. Directories named after what they *do* (`managers/`, `handlers/`, `services/`, `providers/`, `utils/`) don't — architectural roles drift. Anything ending in `-ers` or `-ors` is usually a shelf, not a boundary.
-
-```
-// bad: accidents dressed as decisions
-src/
-  utils/        — dumping ground
-  helpers/      — second dumping ground, overlaps with utils/
-  managers/     — role-named; what do they manage?
-  common/       — third dumping ground
-
-// good: decisions you can defend
-src/
-  auth/         — everything that touches identity
-  billing/      — everything that touches payments
-  parser/       — everything that touches the syntax tree
-```
-
-## Quick Reference
-
-| Principle | One-line rule |
-|-----------|--------------|
-| Cardinal Rule | Improve what you touch — don't match existing bad style |
-| Simplicity | No abstraction until the third repetition |
-| Naming | Name by role/purpose, not implementation |
-| Decomposition | If you'd say "and" to describe it, split it |
-| File Structure | Section dividers, public API at top, colocate types |
-| Comments | Explain why, never what; 1-2 lines, headers at most ~5 |
-| Commits | Symbol prefix, lowercase, subject-only, one logical change per commit |
-| Directory Structure | A directory should reflect a decision, not an accident |
-
-## Common Mistakes
-
-| Mistake                                             | Fix                                                                |
-| --------------------------------------------------- | ------------------------------------------------------------------ |
-| Matching existing bad style when adding code        | Improve what you touch — rename, restructure, add dividers         |
-| Commenting what code does instead of why            | Delete the comment or improve the code                             |
-| Matching existing over-commented style when editing a file | Prune comments that fail the "why, non-obviously" test — you own signal-to-noise on your way out |
-| Creating `utils`/`helpers`/`common` dumping grounds | Name the concept that lives there (`auth`, `parser`, `billing`), or move each file next to its real consumer |
-| Over-documenting with JSDoc on every function       | Doc comments only where the signature doesn't tell the story       |
-| Giant orchestrator function that "does one thing"   | If it's 50+ lines of sequential steps, the steps are the functions |
-| Role-named directories (`managers/`, `services/`, `handlers/`, `providers/`) | Name by the noun that lives there. Anything ending in `-ers` or `-ors` is probably a shelf, not a boundary |
-| Re-export shim kept "for compatibility" long after the migration completed | Delete the shim. Update the remaining callers — the "legacy" is the shim itself. |
-| 200+ line block of pure logic embedded in a framework component | Extract as a `createX(deps): X` factory. Component becomes the wiring shell; factory is unit-testable in isolation. |
+- **What changes together lives together.** If one fix touches six directories, the axis is wrong.
+- **Who depends on whom.** Directories form a DAG, volatile code depending on stable code. A cycle between two directories means the boundary isn't real; merge them or redraw it.
+- **Could a new reader form this tree from first principles?** If the layout doesn't match the model a contributor builds after a week in the code, fix the tree.
+- **Name the concept, not the shelf.** `parser/`, `auth/`, `billing/` survive refactors. `utils/`, `helpers/`, `managers/`, `services/` are shelves; roles drift, and a name ending in -ers or -ors usually marks one.

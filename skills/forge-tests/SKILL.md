@@ -1,95 +1,70 @@
 ---
 name: forge-tests
-description: Use when writing, reviewing, or planning unit tests or E2E tests — covers test quality, coverage strategy, file organization, and real user interaction simulation. Addresses common agent pitfalls like happy-path-only coverage, trivial tests, monolithic files, and programmatic shortcuts that bypass real user behavior
+description: Use when writing, reviewing, or planning unit, property, or E2E tests, or adding a regression test for a bug fix
 ---
 
 # Forge Tests
 
-Tests catch regressions. Every test should answer: "if someone broke this specific behavior, would this test fail?" Test code is still code — follow `forge-style` for naming, decomposition, and structure.
+How to write tests that catch regressions. Test code is code, so `forge-style` applies to it too.
 
-## Shared Principles
+## A test counts when it can fail
 
-### Coverage That Matters
+Every test answers one question: if someone broke this behavior, would this test go red? The only proof is watching it happen. A regression test is shown failing against the unfixed code, for the reason the bug gives, before the fix lands; a new test for existing behavior is checked by breaking the behavior (revert the change, neuter the guard) and watching it fail. A test that stays green through that was never guarding anything. The same check settles "this is already covered": revert the change, and if every suite stays green, it wasn't.
 
-- **Edge cases over happy paths.** The happy path usually works. Test the boundaries: empty input, off-by-one, state transitions, concurrent operations, undo after a destructive action.
-- **No trivial tests.** Don't test that a constructor sets a field, that `true === true`, or that a function called with valid input doesn't throw. If the test can't fail from a realistic code change, delete it.
-- **No duplicate coverage.** If unit tests already prove round-trip serialization, E2E tests shouldn't re-test it. Each layer tests what it uniquely can.
+## What to cover
 
-### File Organization
+- **Boundaries over happy paths.** The happy path usually works. Test empty input, off-by-one offsets, first and last child, state transitions, undo after a destructive action, rapid repeated input.
+- **The interesting boundaries, not every permutation.** Skip tests that can't fail from a realistic code change (a constructor setting a field, a one-line lookup tested once per key). Five tests of a set-membership check are one test.
+- **Test at the layer where the bug would live.** The common blind spot is a pure core tested thoroughly with tidy, hand-built inputs while the layer that produces those inputs from real events (the key handler, the dispatcher, the paste route) has no tests at all. Each layer gets tests for what only it can get wrong, and a behavior proven at one layer isn't re-proven at another.
+- **Oracles check the property that matters.** An assertion that the output has the right structure can pass while derived state (a cache, an index, a round-trip) is wrong. Assert the thing a user would notice.
+- **An unreachable state gets an assertion, not a test.** If the system can't produce a node with no children, a test of how a function handles one guards nothing; a dev-mode check that it never happens does. "Can't happen" is a belief, though, and a generator is how you test the belief (below).
 
-- **One concern per file.** A test file covers one module, one feature, or one behavior area. Not "everything about headings" (710 lines) — split into "heading conversion", "heading split/merge", "heading navigation".
-- **Target: under 150 lines per file.** If a file exceeds this, it's probably covering multiple concerns. Split it.
-- **Parameterize repetitive cases.** If 6 tests differ only in a single input value (h1 through h6), use a loop or table-driven pattern. Two representative cases beat six copy-pasted ones.
-- **Test location when source moves.** When a module moves, either (a) move the test file to mirror the new source path or (b) keep test directories flat and rename each to match the concept its tests cover. Pick one convention per repo and follow it — don't mix "this test mirrors the source tree, that one is flat" in the same codebase. When a test directory's name stops matching the source it covers, rename it in the same commit that moves the source.
+## Property tests
 
-### Before Writing Tests
+Property tests find the bugs nobody thought to write an example for, and they're only as good as their generator. A generator that draws ASCII text and one construct at a time can't produce the bugs that live in surrogate pairs, combining marks, or two constructs interleaved, so the suite says nothing about them. Make generators draw the shapes real input has, boundary shapes included. When a property finds a failure, pin the shrunk counterexample as a named example test so the case survives a generator change.
 
-```
-Does a requirement file exist for this feature?
-  ├─ Yes → follow it
-  └─ No → is this E2E / integration for an interactive feature?
-       ├─ Yes → write the requirement file first
-       └─ No (unit test for pure logic) → requirements are implicit in the API contract
-```
+## Parameterized and generated cases
 
-## Unit Tests
+When cases differ only in one input (h1 through h6), use a table or a loop; two representative cases often beat six copies. Give each generated case its own name that includes its row, so a failure says which one broke. If the project maps requirements to tests by counting, the count has to come from what the runner lists (for Playwright, `playwright test --list`), not from counting `test(` calls in the source, or every loop-driven file reads as one test and fails the mapping for no real reason.
 
-Unit tests verify logic in isolation. They're fast, deterministic, and focused.
+A bug found on one of several sibling routes gets a regression test that runs every sibling route, parameterized, so the next route added without the rule fails too.
 
-- **Test the interesting boundaries**, not every permutation. A merge function needs tests for: eligible pairs, ineligible pairs, edge cases (first/last child, empty content, container with one child left after merge). It doesn't need a separate test for every possible kind pair.
-- **Don't test what can't regress independently.** If `isBlockEditable` is a one-line lookup, one test suffices. Don't write 5 tests for 5 block types — the implementation is a set membership check.
-- **Don't test defensive cases that can't happen.** If the editor never produces a node with `undefined` children, don't test how the function handles `undefined` children.
-- **Match existing conventions.** Before writing, read 2-3 existing test files. Match: import style, describe/it nesting, helper patterns, assertion style, file naming.
+## Timing
 
-## E2E Tests
+A test that waits a fixed time for something to happen passes on a quiet machine and flakes under load. Wait for the condition itself (poll for it, or use the framework's auto-waiting assertions). A test that's green alone and red under a full parallel run is showing you a real race or an ordering dependency; record it and find the cause instead of retrying it green.
 
-E2E tests verify behavior through the same interface users use. The test must fail if the user's experience would break.
+## Organizing tests
 
-### Simulate Real User Actions
+- **One concern per file.** A file covers one module, feature or behavior area. Past about 150 lines, check whether it's covering two concerns; length alone is fine if it isn't.
+- **Match the house style.** Read two or three existing test files first and match imports, nesting, helpers, assertions and file naming.
+- **Tests follow their source.** When a module moves, either mirror the new source path or keep test directories flat and named by concept; pick one per repo, and rename the test directory in the same commit that moves the source.
 
-This is the most important rule. Agents default to programmatic shortcuts. Users don't.
+## E2E tests
 
-| User action | Correct simulation | Wrong simulation |
+E2E tests exercise the product the way a user does, and must fail when the user's experience would break.
+
+### Simulate real user actions
+
+Programmatic shortcuts skip the event handlers, focus management, caret placement and rendering the user actually goes through, so a test built on them can pass while the real interaction fails.
+
+| User action | Simulate with | Not with |
 |---|---|---|
-| Type text | Keyboard events (per-character or string) | Programmatic API call that sets value directly |
-| Click at position | Simulated click then keyboard navigation | Programmatic cursor/selection placement |
-| Select text | Shift+arrow keys or click-drag | Programmatic range selection |
-| Undo | Keyboard shortcut (Ctrl+Z / Cmd+Z) | Programmatic undo call |
+| Type text | Keyboard events | An API call that sets the value |
+| Place the caret | A click, then keyboard navigation | Programmatic selection |
+| Select text | Shift+arrows or click-drag | A programmatic range |
+| Undo | Ctrl+Z / Cmd+Z | A direct undo call |
 
-**Why this matters:** Programmatic shortcuts bypass event handlers, focus management, cursor positioning, and rendering pipelines. A test using programmatic APIs can pass while the real user interaction fails.
+Programmatic calls are fine for reading state to assert on; that's observation, not interaction.
 
-**Exception:** Use programmatic calls for state queries (reading values, checking counts) — that's assertion, not interaction.
+A real gesture still has to land deterministically. A click at the center of a measured rect can fall on either side of a glyph by font-metric luck, so an exact assertion after it flakes by construction. Click into the neighborhood, then walk to the exact target with the keyboard, or derive the expectation from where the click actually landed.
 
-**Real gestures must still land deterministically.** A click computed from a measured rect can resolve on a sub-pixel knife's edge (the center of an odd-length word is the middle of a glyph; which side the caret lands on is font-metric luck), and an assertion that hard-codes one outcome is flaky by construction. Click into the neighborhood, then walk to the exact target with keyboard steps before asserting byte-exact positions — or derive the expectation from where the gesture actually landed.
+Leave to other layers what they already prove (parser round-trips), styling details that don't signal a functional state, and internal state the user can't see.
 
-### Requirement-Driven Coverage
+### Requirement files
 
-For interactive features, write a plain-English requirement file before writing tests. Derive scenarios from:
-- Design docs and architecture specs
-- Existing behavior described in changelogs
-- How a real user would interact (keyboard, mouse, combined)
-- What could go wrong (edge cases, rapid input, undo, state boundaries)
+For an interactive feature, write the requirements in plain English before the tests. Draw scenarios from design docs, the changelog, how a real user would reach the feature (keyboard, mouse, both), and what could go wrong. Pure logic doesn't need one; its API contract is the requirement.
 
-#### Requirement file organization
-
-Requirement files follow the same rules as test files: **one concern per file, 1:1 mapping with test files.**
-
-```
-tests/
-  requirements/
-    feature-a.md       ← scenarios for feature-a test file
-    feature-b.md       ← scenarios for feature-b test file
-    ...
-  feature-a.spec.ts   ← implements feature-a.md
-  feature-b.spec.ts   ← implements feature-b.md
-  ...
-```
-
-- **One requirement file per test file.** Never one monolithic file for all features.
-- **Target: under 50 scenarios per file.** If a requirement file exceeds this, the feature is too broad — split both the requirements and the test file.
-- If a requirement file gets too big, that signals the test file should also be split. They stay in lockstep.
-
-#### Requirement file format
+Requirement files pair one-to-one with spec files (`requirements/feature-a.md` beside `feature-a.spec.ts`): every scenario has a test and every test maps to a scenario. A requirement file past about 50 scenarios usually means the feature should split, and the spec splits with it.
 
 ```
 # Feature: [name]
@@ -107,32 +82,6 @@ tests/
 - [scenario]: [expected outcome]
 ```
 
-The test file implements each scenario. If a scenario is in the requirements, there's a test for it. If a test exists, it maps to a requirement.
+### After fixing a bug
 
-#### After fixing a bug
-
-When a bug is fixed and a regression test is added, update the corresponding requirement file with the new scenario. Requirements are living documents — they grow as bugs are found and fixed. A regression test without a requirement entry will be forgotten by the next person writing tests for that feature.
-
-Record a one-line miss-analysis with the regression test: what test should have caught this bug, and why none did. The generalized answers (an entry path with zero tests, a property generator too tame to draw the shape, a sibling path never asserted as a class) are how the suite's blind spots get named instead of rediscovered — `forge-review` mandates the same line during review passes.
-
-### What E2E Should NOT Test
-
-- Things unit tests already cover (parser round-trip, metadata extraction)
-- CSS styling details (font size, color) unless they indicate a functional state
-- Internal state that isn't visible to the user
-
-## Common Mistakes
-
-| Mistake | Fix |
-|---------|-----|
-| 700-line test file | Split by behavior area. Target <150 lines. |
-| 6 identical tests for h1-h6 | Parameterize: `for (const level of [1, 3, 6])` |
-| E2E uses programmatic API for all input | Use real keyboard/mouse simulation for interactions |
-| Byte-exact assertion downstream of a rect-derived click | Walk to the exact offset by keyboard after the click, or derive the expectation from the actual landing |
-| Tests only the happy path | Add: empty input, boundary offsets, undo after action, rapid state changes |
-| Round-trip tests in E2E that duplicate unit tests | Delete them. E2E tests user-facing behavior. |
-| Tests for impossible states | Delete. Only test states the system can actually reach. |
-| No existing test files read before writing | Read 2-3 existing tests first. Match conventions. |
-| Jumped straight to writing tests | Write or locate requirements first for E2E/integration. |
-| One giant requirements file for all features | Split: one requirement file per test file, in a `requirements/` directory. |
-| Bug fix + regression test but requirements not updated | Add the regression scenario to the requirement file. Requirements are living documents. |
+Add the regression scenario to the requirement file, so the next person writing tests for the feature sees it. Record a one-line miss-analysis with it (in the requirement file for E2E, as the test's header line for a unit test): what test should have caught this, and why none did. The general answers (an entry path with no tests, a generator too tame to draw the shape, a sibling route never tested as a class) are how a suite's blind spots get named instead of rediscovered.
