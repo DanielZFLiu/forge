@@ -45,13 +45,13 @@ Names are the first layer of documentation, so name by role (`userRecords`, not 
 
 ## Decomposition
 
-Each function, file and module has a responsibility you can state in one short sentence. If the sentence needs "and", split it. A function whose behavior switches on a mode or flag argument is two functions sharing a signature; give each its own. A long orchestrator that "does one thing" in fifty sequential steps usually has its steps as the missing functions.
+Each function, file and module has a responsibility you can state in one short sentence. If the sentence needs "and" between two jobs that change for different reasons, split it; reading and writing one format is one job. An exported function whose behavior switches on a mode or flag argument is two functions sharing a signature; give each its own name, and let a shared core inside take a direction as data. A long orchestrator that "does one thing" in fifty sequential steps usually has its steps as the missing functions.
 
-Logic that doesn't use a UI framework's lifecycle (no effects, no rendering, no DOM refs) belongs in a plain module the component calls, where it can be tested without mounting anything. Pass it its dependencies explicitly, and pass values that change as reads (a getter, an accessor function), never as a copy captured at construction, which goes stale the moment the source changes. If the module needs everything the component has, it isn't independent yet; leave it.
+Logic that doesn't use a UI framework's lifecycle (no effects, no rendering, no DOM refs) belongs in a plain module the component calls, where it can be tested without mounting anything. Pass it its dependencies explicitly, and pass values that change as reads (a getter, an accessor function), never as a copy captured at construction, which goes stale the moment the source changes. If the module needs everything the component has, it isn't independent yet; leave it. A factory is a unit too: the one-sentence test applies to its closure, and a closure holding several independent pieces of state is several factories.
 
 ## File structure
 
-A reader should see a file's shape without reading every line. Public API and main exports near the top, internals below. Types sit next to the code that uses them unless they're shared. Section dividers mark logical groups, in the language's comment syntax:
+A reader should see a file's shape without reading every line. Public API and main exports near the top, internals below. Types sit next to the code that uses them; a shared type lives in the lowest layer every user can import. Section dividers mark logical groups, in the language's comment syntax, and a file that needs more than a handful of them is usually several files:
 
 ```
 // ── Public API ──────────────────────────
@@ -111,7 +111,7 @@ Each commit is one logical change a reviewer can read on its own, verified befor
 
 A directory should reflect a decision, not "I didn't know where else to put it". Any topology works when chosen on purpose (by feature, by layer, by data). Four questions test one:
 
-- **What changes together lives together.** If one fix touches six directories, the axis is wrong.
-- **Who depends on whom.** Directories form a DAG, volatile code depending on stable code. A cycle between two directories means the boundary isn't real; merge them or redraw it.
-- **Could a new reader form this tree from first principles?** If the layout doesn't match the model a contributor builds after a week in the code, fix the tree.
-- **Name the concept, not the shelf.** `parser/`, `auth/`, `billing/` survive refactors. `utils/`, `helpers/`, `managers/`, `services/` are shelves; roles drift, and a name ending in -ers or -ors usually marks one.
+- **What changes together lives together.** When one kind of fix keeps landing in the same handful of directories, those pieces belong in one. A feature that crosses each layer once, through that layer's registry or entry point, is layering working.
+- **Who depends on whom.** Directories form a DAG, volatile code depending on stable code, and a check in the test gate holds the order; without one it decays. A runtime cycle between two directories means the boundary isn't real; merge them or redraw it. A cycle made only of type imports means a shared type sits too high; move it down.
+- **Could a new reader find things from the tree alone?** Pick five behaviors at random; a newcomer should name the directory for each from the directory names. Where they can't, fix the tree before writing the index that explains it.
+- **Name the concept, not the shelf.** `parser/`, `auth/`, `billing/` survive refactors. A role (`utils/`, `helpers/`, `managers/`) or a mechanism (`reactivity/`, `stores/`) is a shelf; domain plurals like `parsers/` are fine. File names follow the same rule, and a project-private word a comment would have to gloss doesn't name a file either. When a file's contents outgrow its name, rename it; many siblings sharing a prefix are a directory waiting to be named.
